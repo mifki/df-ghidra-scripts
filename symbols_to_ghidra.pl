@@ -1,31 +1,7 @@
 #!/usr/bin/perl
 
-# this script generates C headers from df-structures codegen.out.xml
-
-# input is 1st argument or 'codegen/codegen.out.xml'
-
-# default is generating IDA-compatible headers
-# to generate full C headers, use
-#  perl codegen --stdc
-
-# to generate linux headers, use
-#  perl codegen --linux
-
 use strict;
 use warnings;
-
-
-my $linux = grep { $_ eq '--linux' } @ARGV;
-   @ARGV  = grep { $_ ne '--linux' } @ARGV if $linux;
-
-my $osx = grep { $_ eq '--osx' } @ARGV;
-   @ARGV  = grep { $_ ne '--osx' } @ARGV if $osx;
-
-my $win = grep { $_ eq '--win' } @ARGV;
-   @ARGV  = grep { $_ ne '--win' } @ARGV if $win;
-
-my $stdc = grep { $_ eq '--stdc' } @ARGV;
-   @ARGV = grep { $_ ne '--stdc' } @ARGV if $stdc;
 
 my $symbolsname;
 my $ver = '0.44.12';
@@ -319,7 +295,7 @@ public class df_ghidra extends GhidraScript {
     {
         DataType dataType = manager.getDataType("/codegen.h/vtable_"+className);
         
-        clearListing(vtableAddr, vtableAddr.add(dataType.getLength()));
+        clearListing(vtableAddr, vtableAddr.add(dataType.getLength()-1));
         createData(vtableAddr, dataType);
         createLabel(vtableAddr, "_vtable_"+className, true, SourceType.USER_DEFINED);
     }
@@ -330,7 +306,7 @@ public class df_ghidra extends GhidraScript {
         {
             DataType dataType = getDataTypes(typeName)[0];//manager.getDataType("/codegen.h/"+typeName);
         
-            clearListing(addr, addr.add(dataType.getLength()));
+            clearListing(addr, addr.add(dataType.getLength()-1));
             createData(addr, dataType);
         }
 
