@@ -702,7 +702,7 @@ sub render_stlvector_ptr_custom {
     push @lines2, "struct $vname {";
     indent {
         #render_item($tg, "*ptr");
-        push @lines2, "$tname **ptr;";
+        push @lines2, "struct $tname **ptr;";
         push @lines2, "void *endptr;";
         push @lines2, "void *endalloc;";
     };
