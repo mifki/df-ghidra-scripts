@@ -280,6 +280,10 @@ public class df_ghidra extends GhidraScript {
     {
         println("processing vtable for " + className+ " "+parentVtableAddr);
 
+        try {
+            currentProgram.getSymbolTable().createClass(currentProgram.getGlobalNamespace(), className, SourceType.USER_DEFINED);
+        } catch (ghidra.util.exception.DuplicateNameException e) {}
+
         Structure vtType = (Structure) manager.getDataType("/codegen.h/"+vtTypeName);
         for (int i = 0; i < vtType.getNumComponents(); i++) {
             DataTypeComponent dc = vtType.getComponent(i);
