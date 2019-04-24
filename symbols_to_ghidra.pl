@@ -62,6 +62,9 @@ sub get_vt_name {
     my $vt;
     while (not $vt = $type->findnodes('child::virtual-methods')->[0]) {
         my $parentname = $type->getAttribute('inherits-from');
+        if (not $parentname) {
+            last;
+        }
         $type = $global_types{$parentname};
     }
 
