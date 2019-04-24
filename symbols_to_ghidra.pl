@@ -3,18 +3,15 @@
 use strict;
 use warnings;
 
-my $symbolsname;
-my $ver = '0.44.12';
-$symbolsname = "v$ver SDL win64" if $win;
-$symbolsname = "v$ver linux64" if $linux;
-$symbolsname = "v$ver osx64" if $osx;
+my $win = 1;
+my $symbolsname = 'v0.23.130.23a';
 
 #XXX: using __thiscall prevents from applying the correct type for this pointer ??
 my $callconv = '__stdcall';
 $callconv = '__fastcall' if $win;
 
-my $input1 = 'codegen/codegen.out.xml';
-my $input2 = 'symbols.xml';
+my $input1 = '23a/codegen.out.xml';
+my $input2 = '23a/symbols.xml';
 my $output = $ARGV[1] || 'df_ghidra.java';
 
 use XML::LibXML;
@@ -231,15 +228,17 @@ public class df_ghidra extends GhidraScript {
     DataTypeManager manager;
     Address vmeth_nullptr;
 
-    void applyFunctionType(Address addr, String fnName, FunctionDefinition fnDataType, DataType thisType) throws Exception
+    void applyFunctionType(Address addr, String fnName, FunctionDefinition fnDataType, DataType thisType, String className) throws Exception
     {
         Function fn = getFunctionAt(addr);
         if (fn == null)
             fn = createFunction(addr, fnName);
 
+        currentProgram.getSymbolTable().createLabel(addr, className+"::"+fnName, currentProgram.getGlobalNamespace(), SourceType.USER_DEFINED).setPrimary();
+
         fn.setName(fnName, SourceType.USER_DEFINED);
 
-        fn.setCallingConvention("$callconv");
+        fn.setCallingConvention("__thiscall");
         fn.setReturnType(fnDataType.getReturnType(), SourceType.USER_DEFINED);
 
         List params = new ArrayList();
@@ -273,7 +272,7 @@ public class df_ghidra extends GhidraScript {
         DataType dataType = manager.getDataType("/codegen.h/"+className);
         DataType thisType = new PointerDataType(dataType);
 
-        applyFunctionType((Address)d.getValue(), fnName, fnDataType, thisType);
+        applyFunctionType((Address)d.getValue(), fnName, fnDataType, thisType, className);
     }
 
     void applyVmethodTypes(Address vtableAddr, String className, String vtTypeName, Address parentVtableAddr) throws Exception
