@@ -292,7 +292,14 @@ sub render_class_vtable_fields {
             my $argname = $arg->getAttribute('name');
             my $argmeta = $arg->getAttribute('ld:meta');
             if ($argmeta eq 'pointer') {
-                push @args, 'void*';
+                my $tname = $arg->getAttribute('type-name') || '';
+                if ($tname eq 'stl-string') {
+                    push @args, 'struct stl_string*';
+                } elsif ($global_types{$tname}) {
+                    push @args, "struct $tname*";
+                } else {
+                    push @args, 'void*';
+                }
             } elsif ($argmeta eq 'number') {
                 push @args, $arg->getAttribute('ld:subtype');
             } elsif ($argmeta eq 'global') {
