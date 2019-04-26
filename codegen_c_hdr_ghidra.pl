@@ -1,32 +1,22 @@
 #!/usr/bin/perl
 
 # this script generates C headers from df-structures codegen.out.xml
-
-# input is 1st argument or 'codegen/codegen.out.xml'
-
-# default is generating IDA-compatible headers
-# to generate full C headers, use
-#  perl codegen --stdc
-
-# to generate linux headers, use
-#  perl codegen --linux
+# see readme for invocation details
 
 use strict;
 use warnings;
 
+my $stdc = 0;
 
 my $linux = grep { $_ eq '--linux' } @ARGV;
    @ARGV  = grep { $_ ne '--linux' } @ARGV if $linux;
-
-my $stdc = grep { $_ eq '--stdc' } @ARGV;
-   @ARGV = grep { $_ ne '--stdc' } @ARGV if $stdc;
 
 # 64bit output by default
 my $bin32 = grep { $_ eq '--32' } @ARGV;
    @ARGV  = grep { $_ ne '--32' } @ARGV if $bin32;
 
 my $input = $ARGV[0] || 'codegen/codegen.out.xml';
-my $output = $ARGV[1] || 'codegen.h';
+my $output = 'codegen.h';
 
 use XML::LibXML;
 

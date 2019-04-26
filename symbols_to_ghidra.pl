@@ -1,18 +1,14 @@
 #!/usr/bin/perl
 
+# this script generates a Ghidra script to create globals and vmethods, apply their types, etc.
+# see readme for invocation details
+
 use strict;
 use warnings;
 
-my $win = 1;
-my $symbolsname = 'v0.23.130.23a';
-
-#XXX: using __thiscall prevents from applying the correct type for this pointer ??
-my $callconv = '__stdcall';
-$callconv = '__fastcall' if $win;
-
-my $input1 = '23a/codegen.out.xml';
-my $input2 = '23a/symbols.xml';
-my $output = $ARGV[1] || 'df_ghidra.java';
+my $symbolsname = $ARGV[0]; #'v0.23.130.23a';
+my $input1 = $ARGV[1]; #'23a/codegen.out.xml';
+my $input2 = $ARGV[2]; #'23a/symbols.xml';
 
 use XML::LibXML;
 
@@ -24,7 +20,6 @@ my %global_types;
 my %global_types_orig;
 my %global_objects;
 my @calls;
-
 
 sub emit_label {
     my ($name, $addr, $type) = @_;
@@ -228,18 +223,22 @@ public class df_ghidra extends GhidraScript {
     DataTypeManager manager;
     Address vmeth_nullptr;
 
-    void applyFunctionType(Address addr, String fnName, FunctionDefinition fnDataType, DataType thisType, String className) throws Exception
+    void applyFunctionType(Address addr, String fnName, FunctionDefinition fnDataType, DataType thisType, String className, GhidraClass cls) throws Exception
     {
         Function fn = getFunctionAt(addr);
         if (fn == null)
             fn = createFunction(addr, fnName);
-
-        currentProgram.getSymbolTable().createLabel(addr, className+"::"+fnName, currentProgram.getGlobalNamespace(), SourceType.USER_DEFINED).setPrimary();
+        else if (fn.getName().startsWith("__"))
+            return;
 
         fn.setName(fnName, SourceType.USER_DEFINED);
 
         fn.setCallingConvention("__thiscall");
         fn.setReturnType(fnDataType.getReturnType(), SourceType.USER_DEFINED);
+        fn.setParentNamespace(cls);
+
+        if (cls != null)
+            currentProgram.getSymbolTable().createLabel(addr, fnName, cls, SourceType.USER_DEFINED).setPrimary();        
 
         List params = new ArrayList();
         ParameterDefinition[] typeParams = fnDataType.getArguments();
@@ -252,17 +251,24 @@ public class df_ghidra extends GhidraScript {
         fn.replaceParameters(params, FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.USER_DEFINED);
     }
 
-    void applyVmethodType(Address vtableAddr, int pos, String className, String fnName, FunctionDefinition fnDataType, Address parentVtableAddr) throws Exception
+    Address vmethodAddress(Address vtableAddr, int pos) throws Exception
     {
-        Data d = getDataAt(vtableAddr).getComponent(pos);
+        if (currentProgram.getDefaultPointerSize() == 8)
+            return toAddr(getLong(vtableAddr.add(pos*8)));
+        else
+            return toAddr(getInt(vtableAddr.add(pos*4)));
+    }
 
-        if (d.getValue().equals(vmeth_nullptr))
+    void applyVmethodType(Address vtableAddr, int pos, String className, String fnName, FunctionDefinition fnDataType, Address parentVtableAddr, GhidraClass cls) throws Exception
+    {
+        Address addr = vmethodAddress(vtableAddr, pos);
+        if (addr.equals(vmeth_nullptr))
             return;
 
         if (parentVtableAddr != null)
         {
-            Data dParent = getDataAt(parentVtableAddr).getComponent(pos);
-            if (dParent.getValue().equals(d.getValue()))
+            Address parentAddr = vmethodAddress(parentVtableAddr, pos);
+            if (parentAddr.equals(addr))
             {
                 println("skipping "+fnName);
                 return;
@@ -272,27 +278,50 @@ public class df_ghidra extends GhidraScript {
         DataType dataType = manager.getDataType("/codegen.h/"+className);
         DataType thisType = new PointerDataType(dataType);
 
-        applyFunctionType((Address)d.getValue(), fnName, fnDataType, thisType, className);
+        applyFunctionType(addr, fnName, fnDataType, thisType, className, cls);
+    }
+
+    void flattenVtable(Structure vtType, ArrayList<DataTypeComponent> flat)
+    {
+        for (int i = 0; i < vtType.getNumComponents(); i++) {
+            DataTypeComponent dc = vtType.getComponent(i);
+
+            if ("super".equals(dc.getFieldName())) {
+                Structure parent = (Structure) dc.getDataType();
+                flattenVtable(parent, flat);
+            } else
+                flat.add(dc);
+        }
     }
 
     void applyVmethodTypes(Address vtableAddr, String className, String vtTypeName, Address parentVtableAddr) throws Exception
     {
         println("processing vtable for " + className+ " "+parentVtableAddr);
 
-        try {
-            currentProgram.getSymbolTable().createClass(currentProgram.getGlobalNamespace(), className, SourceType.USER_DEFINED);
-        } catch (ghidra.util.exception.DuplicateNameException e) {}
+        Data d = getDataAt(vtableAddr);
+        if (d == null) {
+            println("vtable problem for "+className);
+            return;
+        }
 
+        GhidraClass cls = (GhidraClass) currentProgram.getSymbolTable().getNamespace(className, currentProgram.getGlobalNamespace());
+        if (cls == null)
+            cls = currentProgram.getSymbolTable().createClass(currentProgram.getGlobalNamespace(), className, SourceType.USER_DEFINED);
+        
         Structure vtType = (Structure) manager.getDataType("/codegen.h/"+vtTypeName);
-        for (int i = 0; i < vtType.getNumComponents(); i++) {
-            DataTypeComponent dc = vtType.getComponent(i);
+        ArrayList<DataTypeComponent> flat = new ArrayList<DataTypeComponent>();
+        flattenVtable(vtType, flat);
+
+        for (int i = 0; i < flat.size(); i++) {
+            DataTypeComponent dc = flat.get(i);
+
             String fnName = className + "_" + dc.getFieldName();
             DataType fieldType = dc.getDataType();
             if (fieldType instanceof TypeDef)
             {
                 Pointer ptrDataType = (Pointer) ((TypeDef)fieldType).getBaseDataType();
                 FunctionDefinition fnDataType = (FunctionDefinition) ptrDataType.getDataType();
-                applyVmethodType(vtableAddr, i, className, fnName, fnDataType, parentVtableAddr);
+                applyVmethodType(vtableAddr, i, className, fnName, fnDataType, parentVtableAddr, cls);
             }
         }
     }
@@ -350,6 +379,7 @@ print <<END
         manager = currentProgram.getDataTypeManager();
         Function fn = getFunction("_guard_check_icall");
         vmeth_nullptr = (fn != null) ? fn.getEntryPoint() : toAddr(0);
+        //406c10
 END
 ;
 for my $call (@calls) {
